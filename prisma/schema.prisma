@@ -1,0 +1,196 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int       @id @default(autoincrement())
+  email         String    @unique
+  password      String
+  name          String
+  role          Role      @default(USER)
+  phone         String?
+  location       Json?     // Location object as JSON
+  avatar        String?
+  isVerified    Boolean   @default(false)
+  emailVerified  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  worker        Worker?
+
+  @@map("users")
+}
+
+model Worker {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  user            User    @relation(fields: [userId], references: [id])
+
+  bio             String?
+  skills          String[]
+  services        Int[]    // Service IDs
+  experience      Int?     // years
+  hourlyRate      Float?
+  availability    Json?    // { monday: { available: true, startTime: "09:00", endTime: "17:00" }, ... }
+  serviceArea     Json?    // { cities: ["New York", "Boston"], radius: 50 }
+  portfolio       Json?    // Array of portfolio items
+  certifications  Json?    // Array of certifications
+  businessInfo    Json?    // { businessName, license, insurance }
+
+  isActive        Boolean @default(true)
+  isVerified      Boolean @default(false)
+
+  // Statistics
+  jobsCompleted   Int    @default(0)
+  totalEarnings   Float  @default(0)
+  averageRating   Float  @default(0)
+  totalReviews    Int    @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("workers")
+}
+
+model Service {
+  id            Int       @id @default(autoincrement())
+  name          String
+  description   String
+  category      ServiceCategory
+  basePrice     Float?
+  priceUnit     PriceUnit @default(JOB)
+  duration      Int?      // minutes
+  availability  Json?     // { days: ["monday", "tuesday"], hours: { start: "09:00", end: "17:00" } }
+  requirements   String[]
+  images        String[]
+  isActive      Boolean @default(true)
+  isPopular     Boolean @default(false)
+
+  // Emergency service options
+  emergency      Json?     // { available: true, extraCharge: 50, responseTime: "2 hours" }
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("services")
+}
+
+model Reservation {
+  id              Int               @id @default(autoincrement())
+  userId          Int
+  workerId        Int
+  serviceId        Int
+
+  date            DateTime
+  time            String
+  duration         Int               // minutes
+  status          ReservationStatus @default(PENDING)
+  location         Json      // Location object as JSON
+  description      String
+  emergency        Boolean           @default(false)
+  images          String[]
+
+  // Pricing
+  estimatedPrice    Float?
+  actualPrice       Float?
+
+  // Timestamps
+  startTime        DateTime?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  cancelledBy      Int?
+
+  // Cancellation
+  cancellationReason String?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("reservations")
+}
+
+model Review {
+  id            Int       @id @default(autoincrement())
+  userId         Int
+  workerId       Int
+  reservationId  Int
+
+  rating         Int       // 1-5
+  comment        String?
+  aspects        Json?     // { professionalism: 5, quality: 5, timeliness: 4, communication: 5, value: 4 }
+  wouldHireAgain Boolean   @default(true)
+  images         String[]
+
+  // Moderation
+  isVerified     Boolean @default(false)
+  reported       Boolean @default(false)
+  reportedReason String?
+  helpful        Int     @default(0)
+
+  // Worker response
+  response       Json?     // { content: "Thank you for your feedback!", timestamp: "2024-01-01T00:00:00Z" }
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("reviews")
+}
+
+model Tracking {
+  id        Int      @id @default(autoincrement())
+  status    String
+  note      String?
+  location  Json?    // { lat: 40.7128, lng: -74.0060 }
+  timestamp DateTime @default(now())
+  reservationId Int
+
+  @@map("tracking")
+}
+
+model Note {
+  id        Int      @id @default(autoincrement())
+  author    Int
+  content   String
+  internal  Boolean @default(false)
+  timestamp DateTime @default(now())
+  reservationId Int
+
+  @@map("notes")
+}
+
+// Enums
+enum Role {
+  USER
+  WORKER
+  ADMIN
+}
+
+enum ServiceCategory {
+  PLUMBING
+  ELECTRICAL
+  HVAC
+  LOCKSMITH
+}
+
+enum PriceUnit {
+  HOUR
+  JOB
+  CONSULTATION
+}
+
+enum ReservationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
