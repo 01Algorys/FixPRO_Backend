@@ -141,13 +141,14 @@ const createReview = async (req, res, next) => {
       reservationId,
       rating,
       comment,
-      aspects,
-      wouldHireAgain,
-      images = []
+      wouldHireAgain
     } = req.body;
 
     // Verify reservation exists and belongs to user
-    const reservation = await Reservation.findById(reservationId);
+    const reservation = await prisma.reservation.findUnique({
+      where: { id: parseInt(reservationId) }
+    });
+
     if (!reservation) {
       return res.status(404).json({
         success: false,
@@ -156,7 +157,7 @@ const createReview = async (req, res, next) => {
     }
 
     // Check if reservation belongs to user
-    if (reservation.userId.toString() !== req.user._id.toString()) {
+    if (reservation.userId !== req.user.id) {
       return res.status(403).json({
         success: false,
         message: 'You can only review your own reservations'
@@ -164,7 +165,7 @@ const createReview = async (req, res, next) => {
     }
 
     // Check if reservation is completed
-    if (reservation.status !== 'completed') {
+    if (reservation.status !== 'COMPLETED') {
       return res.status(400).json({
         success: false,
         message: 'You can only review completed reservations'
@@ -172,7 +173,10 @@ const createReview = async (req, res, next) => {
     }
 
     // Check if review already exists
-    const existingReview = await Review.findOne({ reservationId });
+    const existingReview = await prisma.review.findFirst({
+      where: { reservationId: parseInt(reservationId) }
+    });
+
     if (existingReview) {
       return res.status(400).json({
         success: false,
@@ -181,27 +185,21 @@ const createReview = async (req, res, next) => {
     }
 
     // Create review
-    const review = await Review.create({
-      userId: req.user._id,
-      workerId: reservation.workerId,
-      reservationId,
-      rating,
-      comment,
-      aspects,
-      wouldHireAgain,
-      images
+    const review = await prisma.review.create({
+      data: {
+        userId: req.user.id,
+        workerId: reservation.workerId,
+        reservationId: parseInt(reservationId),
+        rating: parseInt(rating),
+        comment: comment || '',
+        wouldHireAgain: wouldHireAgain || false
+      }
     });
-
-    // Populate and return
-    const populatedReview = await Review.findById(review._id)
-      .populate('userId', 'name avatar')
-      .populate('workerId', 'name avatar')
-      .populate('reservationId', 'date service');
 
     res.status(201).json({
       success: true,
       message: 'Review created successfully',
-      data: populatedReview
+      data: review
     });
   } catch (error) {
     next(error);

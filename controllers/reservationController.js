@@ -274,6 +274,44 @@ const updateReservationStatus = async (req, res, next) => {
       data: updateData
     });
 
+    // Create welcome messages when reservation is accepted
+    if (status === 'accepted') {
+      try {
+        // Check if messages already exist for this reservation
+        const existingMessages = await prisma.message.findMany({
+          where: { reservationId: parseInt(id) }
+        });
+
+        // Only create welcome messages if no messages exist yet
+        if (existingMessages.length === 0) {
+          // Create welcome message from worker to user
+          await prisma.message.create({
+            data: {
+              reservationId: parseInt(id),
+              senderId: reservation.workerId,
+              receiverId: reservation.userId,
+              content: 'Bonjour ! J\'ai accepté votre demande. N\'hésitez pas à me contacter si vous avez des questions.',
+              type: 'text'
+            }
+          });
+
+          // Create welcome message from user to worker (system-generated)
+          await prisma.message.create({
+            data: {
+              reservationId: parseInt(id),
+              senderId: reservation.userId,
+              receiverId: reservation.workerId,
+              content: 'Merci d\'avoir accepté ma demande. Je suis disponible pour échanger sur les détails.',
+              type: 'text'
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Failed to create welcome messages:', error);
+        // Don't fail the status update if message creation fails
+      }
+    }
+
     // Emit socket event for real-time updates (if socket.io is configured)
     const io = req.app.get('io');
     if (io) {

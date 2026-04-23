@@ -22,10 +22,11 @@ const getUserReservations = async (req, res, next) => {
       take: parseInt(limit)
     });
 
-    // Manually fetch worker and service data for each reservation
+    // Manually fetch worker, service, and review data for each reservation
     const reservationsWithDetails = await Promise.all(reservations.map(async reservation => {
       let workerDetails = null;
       let serviceDetails = null;
+      let userReview = null;
 
       if (reservation.workerId) {
         workerDetails = await prisma.worker.findUnique({
@@ -55,10 +56,19 @@ const getUserReservations = async (req, res, next) => {
         });
       }
 
+      // Check if user has already reviewed this reservation
+      userReview = await prisma.review.findFirst({
+        where: {
+          reservationId: reservation.id,
+          userId: req.user.id
+        }
+      });
+
       return {
         ...reservation,
         worker: workerDetails,
-        service: serviceDetails
+        service: serviceDetails,
+        userRating: userReview ? userReview.rating : null
       };
     }));
 

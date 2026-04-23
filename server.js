@@ -18,6 +18,7 @@ const workerRoutes = require('./routes/workers');
 const serviceRoutes = require('./routes/services');
 const reservationRoutes = require('./routes/reservations');
 const reviewRoutes = require('./routes/reviews');
+const messageRoutes = require('./routes/messages');
 
 // Connect to database
 connectDB();
@@ -25,13 +26,16 @@ connectDB();
 const app = express();
 const server = http.createServer(app);
 
+// NOTE: Server binds to 0.0.0.0 to be reachable from all network interfaces (including mobile devices on local network)
+
 // Initialize Socket.IO
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: process.env.NODE_ENV === 'production' ? (process.env.CLIENT_URL || '*') : '*',
     methods: ["GET", "POST"],
-    credentials: true
-  }
+    credentials: false
+  },
+  transports: ['websocket', 'polling']
 });
 
 // Store io instance in app for use in controllers
@@ -65,6 +69,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Socket test endpoint
+app.get('/socket-test', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Socket.IO server is accessible',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -72,6 +85,7 @@ app.use('/api/workers', workerRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/messages', messageRoutes);
 
 // Worker profile by ID (public endpoint)
 const workerController = require('./controllers/workerController');
@@ -90,7 +104,7 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
   console.log(`Socket.IO server initialized`);
 });
@@ -98,9 +112,10 @@ server.listen(PORT, () => {
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err, promise) => {
   console.error('Unhandled Promise Rejection:', err);
-  server.close(() => {
-    process.exit(1);
-  });
+  // Don't kill server during socket sessions, just log the error
+  // server.close(() => {
+  //   process.exit(1);
+  // });
 });
 
 // Handle uncaught exceptions

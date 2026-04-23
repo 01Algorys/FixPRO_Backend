@@ -10,7 +10,7 @@ const createReviewValidation = [
   body('reservationId')
     .notEmpty()
     .withMessage('Reservation ID is required')
-    .isMongoId()
+    .isInt({ min: 1 })
     .withMessage('Invalid reservation ID'),
   
   body('rating')

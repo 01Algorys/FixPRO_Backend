@@ -166,6 +166,28 @@ model Note {
   @@map("notes")
 }
 
+model Message {
+  id        Int       @id @default(autoincrement())
+  reservationId Int
+  senderId    Int
+  receiverId  Int
+  content    String
+  type       String    @default("text")
+  createdAt  DateTime @default(now())
+
+  @@map("messages")
+}
+
+model MessageRead {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  reservationId Int
+  lastReadAt   DateTime  @default(now())
+
+  @@unique([userId, reservationId])
+  @@map("message_reads")
+}
+
 // Enums
 enum Role {
   USER

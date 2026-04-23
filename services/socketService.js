@@ -17,22 +17,49 @@ class SocketService {
         const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
         
         if (!token) {
+          console.error('Socket auth error: No token provided');
           return next(new Error('Authentication error: No token provided'));
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await prisma.user.findUnique({
-          where: { id: decoded.id }
-        });
+        if (typeof token !== 'string' || token.trim() === '') {
+          console.error('Socket auth error: Invalid token format');
+          return next(new Error('Authentication error: Invalid token format'));
+        }
+
+        let decoded;
+        try {
+          decoded = jwt.verify(token, process.env.JWT_SECRET);
+        } catch (jwtError) {
+          console.error('Socket auth error: JWT verification failed', jwtError);
+          if (jwtError.name === 'TokenExpiredError') {
+            return next(new Error('Authentication error: Token expired'));
+          } else if (jwtError.name === 'JsonWebTokenError') {
+            return next(new Error('Authentication error: Malformed token'));
+          }
+          return next(new Error('Authentication error: Invalid token'));
+        }
+
+        let user;
+        try {
+          user = await prisma.user.findUnique({
+            where: { id: decoded.id }
+          });
+        } catch (prismaError) {
+          console.error('Socket auth error: Database query failed', prismaError);
+          return next(new Error('Authentication error: Database error'));
+        }
 
         if (!user) {
+          console.error('Socket auth error: User not found for ID:', decoded.id);
           return next(new Error('Authentication error: User not found'));
         }
 
         socket.user = user;
+        console.log('Socket auth success for user:', user.id, user.email);
         next();
       } catch (error) {
-        next(new Error('Authentication error: Invalid token'));
+        console.error('Socket auth middleware error:', error);
+        next(new Error('Authentication error: Server error'));
       }
     });
 
@@ -107,7 +134,8 @@ class SocketService {
           });
 
         } catch (error) {
-          socket.emit('error', { message: 'Failed to update location' });
+          console.error('Socket update_location error:', error);
+          socket.emit('error', { message: 'Failed to update location', error: error.message });
         }
       });
 
@@ -182,7 +210,8 @@ class SocketService {
           this.io.to(`worker_${reservation.workerId}`).emit('reservation_update', updateData);
 
         } catch (error) {
-          socket.emit('error', { message: 'Failed to update status' });
+          console.error('Socket update_status error:', error);
+          socket.emit('error', { message: 'Failed to update status', error: error.message });
         }
       });
 
@@ -242,7 +271,8 @@ class SocketService {
           this.io.to(`reservation_${reservationId}`).emit('new_message', messageData);
 
         } catch (error) {
-          socket.emit('error', { message: 'Failed to send message' });
+          console.error('Socket send_message error:', error);
+          socket.emit('error', { message: 'Failed to send message', error: error.message });
         }
       });
 
