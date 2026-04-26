@@ -21,14 +21,12 @@ const getMessages = async (req, res, next) => {
       });
     }
 
-    // Check if user is the worker by comparing Worker table IDs
-    const worker = await prisma.worker.findFirst({
-      where: { userId: req.user.id }
-    });
-    const isWorker = worker && reservation.workerId === worker.id;
+    // Authorization: allow if user is the client OR if user is the assigned worker
+    // Note: reservation.workerId stores the User ID of the worker (from createReservation)
     const isUser = reservation.userId === req.user.id;
+    const isWorker = req.user.id === reservation.workerId;
 
-    if (!isWorker && !isUser) {
+    if (!isUser && !isWorker) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -95,7 +93,7 @@ const sendMessage = async (req, res, next) => {
     const { reservationId } = req.params;
     const { content, type = 'text' } = req.body;
 
-    if (!content || content.trim() === '') {
+    if (!content || !content.trim()) {
       return res.status(400).json({
         success: false,
         message: 'Message content is required'
@@ -114,14 +112,12 @@ const sendMessage = async (req, res, next) => {
       });
     }
 
-    // Check if user is the worker by comparing Worker table IDs
-    const worker = await prisma.worker.findFirst({
-      where: { userId: req.user.id }
-    });
-    const isWorker = worker && reservation.workerId === worker.id;
+    // Authorization: allow if user is the client OR if user is the assigned worker
+    // Note: reservation.workerId stores the User ID of the worker (from createReservation)
     const isUser = reservation.userId === req.user.id;
+    const isWorker = req.user.id === reservation.workerId;
 
-    if (!isWorker && !isUser) {
+    if (!isUser && !isWorker) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -199,50 +195,19 @@ const getConversations = async (req, res, next) => {
     const { page = 1, limit = 20 } = req.query;
     const skip = (page - 1) * limit;
 
-    let reservations;
-    console.log('getConversations - req.user:', req.user);
-    if (req.user.role.toLowerCase() === 'worker') {
-      // Get the Worker record for this user
-      const worker = await prisma.worker.findFirst({
-        where: { userId: req.user.id }
-      });
-
-      console.log('getConversations - worker found:', worker);
-
-      if (!worker) {
-        return res.status(404).json({
-          success: false,
-          message: 'Worker profile not found'
-        });
-      }
-
-      // Get reservations where user is the worker (using Worker table ID)
-      reservations = await prisma.reservation.findMany({
-        where: {
-          workerId: worker.id,
-          //status: { in: ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'] }
-        },
-        orderBy: { updatedAt: 'desc' },
-        skip: skip,
-        take: parseInt(limit)
-      });
-
-      console.log('getConversations - reservations count:', reservations.length);
-    } else {
-      // Get reservations where user is the client
-      reservations = await prisma.reservation.findMany({
-        where: { 
-          userId: req.user.id,
-          //status: { in: ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'] }
-        },
-        orderBy: { updatedAt: 'desc' },
-        skip: skip,
-        take: parseInt(limit)
-      });
-    }
-
-    // Get last message for each reservation
-    console.log('getConversations - building conversations from reservations:', reservations.length);
+    // Use OR condition to get reservations where user is either the client OR the worker
+    // Note: reservation.workerId stores the User ID of the worker (from createReservation)
+    const reservations = await prisma.reservation.findMany({
+      where: {
+        OR: [
+          { userId: req.user.id },
+          { workerId: req.user.id }
+        ]
+      },
+      orderBy: { updatedAt: 'desc' },
+      skip: skip,
+      take: parseInt(limit)
+    });
     const conversations = await Promise.all(reservations.map(async (reservation) => {
       const lastMessage = await prisma.message.findFirst({
         where: { reservationId: reservation.id },
@@ -285,23 +250,19 @@ const getConversations = async (req, res, next) => {
         }
       });
 
-      // Fetch participant information manually
-      let participantInfo = null;
-      if (req.user.role.toLowerCase() === 'worker') {
-        // Worker is fetching client info
-        const user = await prisma.user.findUnique({
+      // Fetch both user and worker information for the conversation
+      // Note: reservation.workerId stores the User ID of the worker
+      const [user, assignedWorker] = await Promise.all([
+        prisma.user.findUnique({
           where: { id: reservation.userId },
           select: {
             id: true,
             name: true,
             avatar: true
           }
-        });
-        participantInfo = user;
-      } else {
-        // User is fetching worker info
-        const worker = await prisma.worker.findUnique({
-          where: { id: reservation.workerId },
+        }),
+        prisma.worker.findFirst({
+          where: { userId: reservation.workerId },
           include: {
             user: {
               select: {
@@ -311,9 +272,8 @@ const getConversations = async (req, res, next) => {
               }
             }
           }
-        });
-        participantInfo = worker?.user;
-      }
+        })
+      ]);
 
       // Fetch service information manually
       let serviceInfo = null;
@@ -347,10 +307,25 @@ const getConversations = async (req, res, next) => {
       return {
         id: reservation.id,
         reservationId: reservation.id,
-        participantName: participantInfo?.name || 'Participant',
-        participantAvatar: participantInfo?.avatar,
-        participantId: participantInfo?.id,
-        serviceName: serviceInfo?.name || 'Service',
+        user: {
+          id: user?.id,
+          name: user?.name || 'User',
+          avatar: user?.avatar
+        },
+        worker: {
+          id: assignedWorker?.id,
+          userId: assignedWorker?.userId,
+          user: {
+            id: assignedWorker?.user?.id,
+            name: assignedWorker?.user?.name,
+            avatar: assignedWorker?.user?.avatar
+          }
+        },
+        workerName: assignedWorker?.user?.name,
+        workerAvatar: assignedWorker?.user?.avatar,
+        service: {
+          name: serviceInfo?.name || 'Service'
+        },
         lastMessage: lastMessageWithSender ? {
           content: lastMessageWithSender.content,
           createdAt: lastMessageWithSender.createdAt,
@@ -363,24 +338,14 @@ const getConversations = async (req, res, next) => {
       };
     }));
 
-    // Calculate total count with proper worker ID handling
-    let totalWhere = {
-      status: { in: ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'] }
-    };
-
-    if (req.user.role.toLowerCase() === 'worker') {
-      const worker = await prisma.worker.findFirst({
-        where: { userId: req.user.id }
-      });
-      if (worker) {
-        totalWhere.workerId = worker.id;
-      }
-    } else {
-      totalWhere.userId = req.user.id;
-    }
-
+    // Calculate total count with OR condition (same as main query)
     const total = await prisma.reservation.count({
-      where: totalWhere
+      where: {
+        OR: [
+          { userId: req.user.id },
+          { workerId: req.user.id }
+        ]
+      }
     });   
 
     res.status(200).json({
@@ -581,14 +546,12 @@ const markConversationAsRead = async (req, res, next) => {
       });
     }
 
-    // Check if user is the worker by comparing Worker table IDs
-    const worker = await prisma.worker.findFirst({
-      where: { userId: req.user.id }
-    });
-    const isWorker = worker && reservation.workerId === worker.id;
+    // Authorization: allow if user is the client OR if user is the assigned worker
+    // Note: reservation.workerId stores the User ID of the worker (from createReservation)
     const isUser = reservation.userId === req.user.id;
+    const isWorker = req.user.id === reservation.workerId;
 
-    if (!isWorker && !isUser) {
+    if (!isUser && !isWorker) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'

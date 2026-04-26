@@ -1,5 +1,6 @@
 const { prisma } = require('../config/database');
 const { validationResult } = require('express-validator');
+const socketService = require('../services/socketService');
 
 // @desc    Get all reservations
 // @route   GET /api/reservations
@@ -58,12 +59,18 @@ const getReservation = async (req, res, next) => {
       });
     }
 
-    // Check if user has access to this reservation
-    if (
-      req.user.id !== reservation.userId &&
-      req.user.id !== reservation.workerId &&
-      req.user.role !== 'admin'
-    ) {
+    // Get worker record to check if user is the assigned worker
+    const workerRecord = await prisma.worker.findFirst({
+      where: { userId: req.user.id }
+    });
+
+    // Authorization: allow if user is the client, the assigned worker, or admin
+    // Note: reservation.workerId stores the User ID of the worker (from createReservation)
+    const isUser = req.user.id === reservation.userId;
+    const isAssignedWorker = req.user.id === reservation.workerId;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isUser && !isAssignedWorker && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -154,6 +161,16 @@ const createReservation = async (req, res, next) => {
       }
     });
 
+    // Emit new_reservation event to worker
+    socketService.emitToWorker(workerId, 'new_reservation', {
+      reservationId: reservation.id,
+      serviceType: serviceDoc.name,
+      userName: req.user.name,
+      location: reservation.location,
+      createdAt: reservation.createdAt,
+      status: reservation.status
+    });
+
     res.status(201).json({
       success: true,
       message: 'Reservation created successfully',
@@ -182,6 +199,9 @@ const updateReservationStatus = async (req, res, next) => {
     const { id } = req.params;
     const { status, note } = req.body;
 
+    // Get io instance at the top to make it available throughout the function
+    const io = req.app.get('io');
+
     if (!['accepted', 'rejected', 'in_progress', 'completed', 'cancelled'].includes(status)) {
       return res.status(400).json({
         success: false,
@@ -192,7 +212,7 @@ const updateReservationStatus = async (req, res, next) => {
     const reservation = await prisma.reservation.findUnique({
       where: { id: parseInt(id) }
     });
-
+    console.log(reservation)
     if (!reservation) {
       return res.status(404).json({
         success: false,
@@ -200,22 +220,23 @@ const updateReservationStatus = async (req, res, next) => {
       });
     }
 
-    // Check permissions - user can only access their own reservations
-    if (req.user.id !== reservation.userId && req.user.id !== reservation.workerId && req.user.role !== 'admin') {
+    // Get worker to check if user is the assigned worker
+    const worker = await prisma.worker.findFirst({
+      where: { userId: req.user.id }
+    });
+
+    // Authorization: allow if user is the client, the assigned worker, or admin
+    // Note: reservation.workerId stores the User ID of the worker (from createReservation)
+    const isUser = req.user.id === reservation.userId;
+    const isAssignedWorker = req.user.id === reservation.workerId;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isUser && !isAssignedWorker && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
       });
     }
-
-    // Get worker to check if user is the worker
-    const worker = await prisma.worker.findFirst({
-      where: { userId: req.user.id }
-    });
-
-    const isWorker = worker && worker.id === reservation.workerId;
-    const isUser = req.user.id === reservation.userId;
-    const isAdmin = req.user.role === 'admin';
 
     // Define who can change to which status
     const allowedStatusChanges = {
@@ -247,7 +268,7 @@ const updateReservationStatus = async (req, res, next) => {
     const currentStatus = reservation.status;
     const allowedRoles = allowedStatusChanges[currentStatus]?.[status];
 
-    const userRole = isWorker ? 'worker' : isUser ? 'user' : 'admin';
+    const userRole = isAssignedWorker ? 'worker' : isUser ? 'user' : 'admin';
 
     if (!allowedRoles || !allowedRoles.includes(userRole)) {
       return res.status(403).json({
@@ -274,7 +295,7 @@ const updateReservationStatus = async (req, res, next) => {
       data: updateData
     });
 
-    // Create welcome messages when reservation is accepted
+    // Create system message when reservation is accepted to initialize conversation
     if (status === 'accepted') {
       try {
         // Check if messages already exist for this reservation
@@ -282,58 +303,119 @@ const updateReservationStatus = async (req, res, next) => {
           where: { reservationId: parseInt(id) }
         });
 
-        // Only create welcome messages if no messages exist yet
+        // Only create system message if no messages exist yet
         if (existingMessages.length === 0) {
-          // Create welcome message from worker to user
-          await prisma.message.create({
-            data: {
-              reservationId: parseInt(id),
-              senderId: reservation.workerId,
-              receiverId: reservation.userId,
-              content: 'Bonjour ! J\'ai accepté votre demande. N\'hésitez pas à me contacter si vous avez des questions.',
-              type: 'text'
-            }
+          // Get worker record to fetch the worker's userId
+          const workerRecord = await prisma.worker.findUnique({
+            where: { id: reservation.workerId },
+            select: { userId: true }
           });
 
-          // Create welcome message from user to worker (system-generated)
           await prisma.message.create({
             data: {
               reservationId: parseInt(id),
               senderId: reservation.userId,
-              receiverId: reservation.workerId,
-              content: 'Merci d\'avoir accepté ma demande. Je suis disponible pour échanger sur les détails.',
-              type: 'text'
+              receiverId: workerRecord?.userId || reservation.workerId,
+              content: 'Reservation accepted. You can now chat with each other.',
+              type: 'system'
             }
           });
         }
+
+        // Update reservation's updatedAt to bring it to top of conversations list
+        await prisma.reservation.update({
+          where: { id: parseInt(id) },
+          data: { updatedAt: new Date() }
+        });
+
+        // Emit conversation_started event to both user and worker
+        const [workerUser, serviceData, normalUser] = await Promise.all([
+          prisma.user.findUnique({
+            where: { id: reservation.workerId },
+            select: { name: true, avatar: true }
+          }),
+          prisma.service.findUnique({
+            where: { id: reservation.serviceId },
+            select: { name: true }
+          }),
+          prisma.user.findUnique({
+            where: { id: reservation.userId },
+            select: { name: true, avatar: true }
+          })
+        ]);
+
+        const conversationData = {
+          reservationId: updatedReservation.id,
+          status: updatedReservation.status,
+          user: {
+            id: reservation.userId,
+            name: normalUser?.name || 'User',
+            avatar: normalUser?.avatar
+          },
+          worker: {
+            id: reservation.workerId,
+            name: workerUser?.name || 'Worker',
+            avatar: workerUser?.avatar
+          },
+          service: {
+            name: serviceData?.name || 'Service'
+          },
+          lastMessage: {
+            content: 'Reservation accepted. You can now chat with each other.',
+            createdAt: new Date(),
+            type: 'system'
+          },
+          updatedAt: new Date()
+        };
+
+        io.to(`user_${reservation.userId}`).emit('conversation_started', conversationData);
+        io.to(`worker_${reservation.workerId}`).emit('conversation_started', conversationData);
       } catch (error) {
-        console.error('Failed to create welcome messages:', error);
+        console.error('Failed to create system message or emit conversation_started:', error);
         // Don't fail the status update if message creation fails
       }
     }
 
-    // Emit socket event for real-time updates (if socket.io is configured)
-    const io = req.app.get('io');
+    // Emit socket event for real-time updates
     if (io) {
-      const updateData = {
+      // Fetch worker and user names for the notification
+      const [workerUser, serviceData, normalUser] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: reservation.workerId },
+          select: { name: true, avatar: true }
+        }),
+        prisma.service.findUnique({
+          where: { id: reservation.serviceId },
+          select: { name: true }
+        }),
+        prisma.user.findUnique({
+          where: { id: reservation.userId },
+          select: { name: true }
+        })
+      ]);
+
+      const statusChangeData = {
         reservationId: reservation.id,
-        status,
-        note,
-        timestamp: new Date(),
-        updatedBy: req.user.id,
-        updatedByRole: req.user.role
+        newStatus: status.toUpperCase(),
+        workerName: workerUser?.name || 'Worker',
+        userName: normalUser?.name || 'User',
+        serviceType: serviceData?.name || 'Service',
+        updatedAt: new Date()
       };
 
-      io.to(`user_${reservation.userId}`).emit('reservation_update', updateData);
-      io.to(`worker_${reservation.workerId}`).emit('reservation_update', updateData);
+      // Emit reservation_status_changed to both user and worker
+      io.to(`user_${reservation.userId}`).emit('reservation_status_changed', statusChangeData);
+      io.to(`worker_${reservation.workerId}`).emit('reservation_status_changed', statusChangeData);
 
-      // Special notification when job is completed - notify user to review
+      // Emit job_completed event when marked complete
       if (status === 'completed') {
-        io.to(`user_${reservation.userId}`).emit('job_completed_for_review', {
+        io.to(`user_${reservation.userId}`).emit('job_completed', {
           reservationId: reservation.id,
           workerId: reservation.workerId,
-          message: 'Le travail est terminé. Veuillez évaluer le travailleur.',
-          timestamp: new Date()
+          workerName: workerUser?.name || 'Worker',
+          workerAvatar: workerUser?.avatar,
+          serviceType: serviceData?.name || 'Service',
+          completedAt: new Date()
         });
       }
     }

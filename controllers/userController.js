@@ -1,5 +1,6 @@
 const { prisma } = require('../config/database');
 const { validationResult } = require('express-validator');
+const socketService = require('../services/socketService');
 
 // @desc    Get user reservations
 // @route   GET /api/users/reservations
@@ -407,11 +408,42 @@ const getUserDashboard = async (req, res, next) => {
   }
 };
 
+// @desc    Get online status for multiple users
+// @route   GET /api/users/online-status
+// @access  Private
+const getUsersOnlineStatus = async (req, res, next) => {
+  try {
+    const { userIds } = req.query;
+    
+    if (!userIds) {
+      return res.status(400).json({
+        success: false,
+        message: 'userIds query parameter is required'
+      });
+    }
+
+    const ids = userIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    
+    const result = ids.map(id => ({
+      userId: id,
+      isOnline: socketService.isUserOnline(id)
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getUserReservations,
   getUserReviews,
   getUserProfile,
   updateUserProfile,
   deleteAccount,
-  getUserDashboard
+  getUserDashboard,
+  getUsersOnlineStatus
 };

@@ -59,5 +59,6 @@ router.get('/profile', userController.getUserProfile);
 router.put('/profile', updateProfileValidation, userController.updateUserProfile);
 router.delete('/account', deleteAccountValidation, userController.deleteAccount);
 router.get('/dashboard', userController.getUserDashboard);
+router.get('/online-status', userController.getUsersOnlineStatus);
 
 module.exports = router;

@@ -68,6 +68,12 @@ class SocketService {
       this.connectedUsers.set(socket.user.id.toString(), socket.id);
       this.userSockets.set(socket.id, socket.user.id.toString());
 
+      // Emit user online event to all connected clients
+      socket.broadcast.emit('user_online', { userId: socket.user.id });
+
+      // Send current online users list to the newly connected user
+      socket.emit('online_users_list', { onlineUsers: Array.from(this.connectedUsers.keys()).map(id => parseInt(id)) });
+
       // Join user-specific rooms
       socket.join(`user_${socket.user.id}`);
       
@@ -301,8 +307,8 @@ class SocketService {
         this.connectedUsers.delete(socket.user.id.toString());
         this.userSockets.delete(socket.id);
 
-        // Notify other users in active reservations about disconnection
-        // This could be expanded to track active reservations per user
+        // Emit user offline event to all connected clients
+        socket.broadcast.emit('user_offline', { userId: socket.user.id });
       });
     });
 
@@ -352,6 +358,11 @@ class SocketService {
       }
     }
     return users;
+  }
+
+  // Method to get all online users
+  getOnlineUsers() {
+    return Array.from(this.connectedUsers.keys()).map(id => parseInt(id));
   }
 }
 
