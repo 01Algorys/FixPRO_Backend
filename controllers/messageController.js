@@ -1,4 +1,6 @@
 const { prisma } = require('../config/database');
+const socketService = require('../services/socketService');
+const { sendPushNotification } = require('../services/pushNotificationService');
 
 // @desc    Get messages for a reservation
 // @route   GET /api/messages/:reservationId
@@ -175,6 +177,55 @@ const sendMessage = async (req, res, next) => {
         timestamp: new Date()
       };
       io.to(`reservation_${reservationId}`).emit('new_message', messageData);
+    }
+
+    // Determine receiver ID
+    const receiverId = isWorker ? reservation.userId : reservation.workerId;
+
+    // Save notification to DB
+    await prisma.notification.create({
+      data: {
+        userId: receiverId,
+        title: 'Nouveau message',
+        message: `${req.user.name || 'Quelqu\'un'} vous a envoyé un message`,
+        type: 'NEW_MESSAGE',
+        data: JSON.stringify({ reservationId: reservation.id, messageId: message.id }),
+        isRead: false,
+      }
+    });
+
+    // Emit new_notification to receiver's personal room
+    socketService.emitToUser(receiverId, 'new_notification', {
+      notification: {
+        type: 'NEW_MESSAGE',
+        title: 'Nouveau message',
+        message: `${req.user.name || 'Quelqu\'un'} vous a envoyé un message`,
+        reservationId: reservation.id,
+        senderId: req.user.id,
+        senderName: req.user.name,
+        createdAt: new Date().toISOString(),
+      }
+    });
+
+    // Emit new_message_badge to receiver's personal room
+    socketService.emitToUser(receiverId, 'new_message_badge', {
+      reservationId: reservation.id,
+      senderId: req.user.id,
+    });
+
+    // Send push notification
+    const receiver = await prisma.user.findUnique({
+      where: { id: receiverId },
+      select: { expoPushToken: true, name: true }
+    });
+
+    if (receiver?.expoPushToken) {
+      await sendPushNotification(
+        receiver.expoPushToken,
+        'Nouveau message',
+        `${req.user.name || 'Quelqu\'un'} : ${content.trim().substring(0, 100)}`,
+        { reservationId: reservation.id, type: 'NEW_MESSAGE' }
+      );
     }
 
     res.status(201).json({

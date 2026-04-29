@@ -96,6 +96,31 @@ const updateProfile = async (req, res, next) => {
       });
     }
 
+    // Validate avatar if provided
+    if (req.body.avatar) {
+      const avatar = req.body.avatar;
+      
+      // Check if it's a valid base64 image
+      if (!avatar.startsWith('data:image/jpeg;base64,') && !avatar.startsWith('data:image/png;base64,')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid image format. Only JPEG and PNG are allowed.'
+        });
+      }
+      
+      // Check size (2MB limit)
+      const base64Data = avatar.split(',')[1];
+      const sizeInBytes = Buffer.byteLength(base64Data, 'base64');
+      const sizeInMB = sizeInBytes / (1024 * 1024);
+      
+      if (sizeInMB > 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'Image too large. Please choose an image smaller than 2MB.'
+        });
+      }
+    }
+
     const result = await authService.updateProfile(req.user._id, req.body);
 
     res.status(200).json({

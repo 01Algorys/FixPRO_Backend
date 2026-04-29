@@ -19,6 +19,7 @@ model User {
   phone         String?
   location       Json?     // Location object as JSON
   avatar        String?
+  expoPushToken String?
   isVerified    Boolean   @default(false)
   emailVerified  DateTime?
   createdAt     DateTime  @default(now())
@@ -186,6 +187,19 @@ model MessageRead {
 
   @@unique([userId, reservationId])
   @@map("message_reads")
+}
+
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  title     String
+  message   String
+  type      String
+  data      Json?
+  isRead    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  @@map("notifications")
 }
 
 // Enums

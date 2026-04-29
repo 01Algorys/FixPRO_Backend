@@ -101,24 +101,6 @@ const getUserReviews = async (req, res, next) => {
 
     const reviews = await prisma.review.findMany({
       where: { userId: req.user.id },
-      include: {
-        worker: {
-          select: {
-            name: true,
-            avatar: true
-          }
-        },
-        reservation: {
-          select: {
-            date: true,
-            service: {
-              select: {
-                name: true
-              }
-            }
-          }
-        }
-      },
       orderBy: { createdAt: 'desc' },
       skip: skip,
       take: parseInt(limit)
@@ -438,6 +420,34 @@ const getUsersOnlineStatus = async (req, res, next) => {
   }
 };
 
+// @desc    Save push notification token
+// @route   POST /api/users/push-token
+// @access  Private
+const savePushToken = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Push token is required'
+      });
+    }
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { expoPushToken: token }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Push token saved successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getUserReservations,
   getUserReviews,
@@ -445,5 +455,6 @@ module.exports = {
   updateUserProfile,
   deleteAccount,
   getUserDashboard,
-  getUsersOnlineStatus
+  getUsersOnlineStatus,
+  savePushToken
 };
