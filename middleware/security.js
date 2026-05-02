@@ -98,14 +98,12 @@ const sanitizeInput = (req, res, next) => {
 
 // CORS configuration
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow all origins for development
-    callback(null, true);
-  },
-  credentials: true,
+  origin: process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['X-Total-Count'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 };
 
 // Request size limiter

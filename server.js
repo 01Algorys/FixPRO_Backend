@@ -28,13 +28,19 @@ const server = http.createServer(app);
 
 // NOTE: Server binds to 0.0.0.0 to be reachable from all network interfaces (including mobile devices on local network)
 
+// CORS configuration for Socket.IO
+const corsOptionsSocket = {
+  origin: process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+};
+
 // Initialize Socket.IO
 const io = socketIo(server, {
-  cors: {
-    origin: process.env.NODE_ENV === 'production' ? (process.env.CLIENT_URL || '*') : '*',
-    methods: ["GET", "POST"],
-    credentials: false
-  },
+  cors: corsOptionsSocket,
   transports: ['websocket', 'polling']
 });
 
@@ -62,10 +68,9 @@ app.use(generalLimiter);
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({
-    success: true,
-    message: 'Server is running',
+    status: 'ok',
+    environment: process.env.NODE_ENV || 'development',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
   });
 });
 

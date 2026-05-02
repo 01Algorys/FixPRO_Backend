@@ -169,6 +169,10 @@ pids
 *.db
 *.sqlite
 *.sqlite3
+*.dump
+
+# Uploads
+uploads/
 
 # Prisma
 prisma/migrations/

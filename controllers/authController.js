@@ -1,7 +1,7 @@
 const authService = require('../services/authService');
 const { validationResult } = require('express-validator');
 const { prisma } = require('../config/database');
-const { supabase } = require('../lib/supabase');
+const supabase = require('../lib/supabase');
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -283,15 +283,13 @@ const verifyEmail = async (req, res, next) => {
 // @access  Private
 const uploadAvatar = async (req, res, next) => {
   try {
-    const userId = req.user.id;
-
-    // Check if Supabase is configured
     if (!supabase) {
       return res.status(503).json({
-        success: false,
-        message: 'Avatar upload service is not configured. Please contact administrator.'
+        error: 'Avatar upload is not configured on this server.'
       });
     }
+
+    const userId = req.user.id;
 
     // Check if file was uploaded
     if (!req.file) {
