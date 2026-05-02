@@ -1,5 +1,7 @@
 const authService = require('../services/authService');
 const { validationResult } = require('express-validator');
+const { prisma } = require('../config/database');
+const { supabase } = require('../lib/supabase');
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -276,6 +278,100 @@ const verifyEmail = async (req, res, next) => {
   }
 };
 
+// @desc    Upload avatar
+// @route   POST /api/auth/upload-avatar
+// @access  Private
+const uploadAvatar = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    // Check if Supabase is configured
+    if (!supabase) {
+      return res.status(503).json({
+        success: false,
+        message: 'Avatar upload service is not configured. Please contact administrator.'
+      });
+    }
+
+    // Check if file was uploaded
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    // Fetch current user from DB
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // If user already has an avatar, delete the old one from Supabase
+    if (user.avatar) {
+      try {
+        // Extract file path from the URL
+        const urlParts = user.avatar.split('/');
+        const filePath = urlParts[urlParts.length - 1];
+        
+        if (filePath) {
+          await supabase.storage
+            .from('avatars')
+            .remove([filePath]);
+        }
+      } catch (deleteError) {
+        console.log('Error deleting old avatar:', deleteError);
+        // Continue with upload even if deletion fails
+      }
+    }
+
+    // Generate filename: {userId}_{timestamp}.jpg
+    const timestamp = Date.now();
+    const fileName = `${userId}_${timestamp}.jpg`;
+
+    // Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(fileName, req.file.buffer, {
+        contentType: req.file.mimetype,
+        cacheControl: '3600'
+      });
+
+    if (uploadError) {
+      console.error('Supabase upload error:', uploadError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to upload avatar'
+      });
+    }
+
+    // Get the public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(fileName);
+
+    // Update user record in DB
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { avatar: publicUrl }
+    });
+
+    return res.status(200).json({
+      success: true,
+      avatarUrl: publicUrl,
+      message: 'Avatar uploaded successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Logout user
 // @route   POST /api/auth/logout
 // @access  Private
@@ -302,5 +398,6 @@ module.exports = {
   forgotPassword,
   resetPassword,
   verifyEmail,
-  logout
+  logout,
+  uploadAvatar
 };

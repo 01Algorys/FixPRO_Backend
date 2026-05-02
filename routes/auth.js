@@ -2,6 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const authController = require('../controllers/authController');
 const { protect, authorize, requireWorkerOrAdmin } = require('../middleware/auth');
+const { upload } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -136,5 +137,6 @@ router.put('/profile', updateProfileValidation, authController.updateProfile);
 router.put('/worker-profile', requireWorkerOrAdmin, updateProfileValidation, authController.updateWorkerProfile);
 router.put('/change-password', changePasswordValidation, authController.changePassword);
 router.post('/logout', authController.logout);
+router.post('/upload-avatar', upload.single('avatar'), authController.uploadAvatar);
 
 module.exports = router;
