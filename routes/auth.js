@@ -6,6 +6,19 @@ const { upload } = require('../middleware/upload');
 
 const router = express.Router();
 
+// Shared password strength rule — used in both register and change-password
+const strongPasswordRule = body('password')
+  .isLength({ min: 8 })
+  .withMessage('Password must be at least 8 characters long')
+  .matches(/[A-Z]/)
+  .withMessage('Password must contain at least one uppercase letter')
+  .matches(/[a-z]/)
+  .withMessage('Password must contain at least one lowercase letter')
+  .matches(/\d/)
+  .withMessage('Password must contain at least one number')
+  .matches(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/)
+  .withMessage('Password must contain at least one special character');
+
 // Validation rules
 const registerValidation = [
   body('name')
@@ -14,35 +27,43 @@ const registerValidation = [
     .withMessage('Name is required')
     .isLength({ min: 2, max: 50 })
     .withMessage('Name must be between 2 and 50 characters'),
-  
+
   body('email')
     .isEmail()
     .withMessage('Please provide a valid email')
     .normalizeEmail(),
-  
-  body('password')
-    .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long')
-    .matches(/^(?=.*[a-z])(?=.*\d)/)
-    .withMessage('Password must contain at least one lowercase letter and one number'),
-  
+
+  strongPasswordRule,
+
   body('role')
     .optional()
     .isIn(['USER', 'WORKER'])
     .withMessage('Role must be either USER or WORKER'),
-  
+
   body('phone')
     .optional()
-    .matches(/^[+]?[\d\s-()]+$/)
+    .matches(/^[+]?[\d\s\-()]+$/)
     .withMessage('Please provide a valid phone number')
 ];
 
 const loginValidation = [
+  // Accept email or phone — at least one must be present
   body('email')
+    .optional({ checkFalsy: true })
     .isEmail()
     .withMessage('Please provide a valid email')
     .normalizeEmail(),
-  
+
+  body('phone')
+    .optional({ checkFalsy: true }),
+
+  body().custom((value) => {
+    if (!value.email && !value.phone) {
+      throw new Error('Email or phone number is required');
+    }
+    return true;
+  }),
+
   body('password')
     .notEmpty()
     .withMessage('Password is required')
@@ -89,12 +110,18 @@ const changePasswordValidation = [
   body('currentPassword')
     .notEmpty()
     .withMessage('Current password is required'),
-  
+
   body('newPassword')
-    .isLength({ min: 6 })
-    .withMessage('New password must be at least 6 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('New password must contain at least one uppercase letter, one lowercase letter, and one number')
+    .isLength({ min: 8 })
+    .withMessage('New password must be at least 8 characters long')
+    .matches(/[A-Z]/)
+    .withMessage('New password must contain at least one uppercase letter')
+    .matches(/[a-z]/)
+    .withMessage('New password must contain at least one lowercase letter')
+    .matches(/\d/)
+    .withMessage('New password must contain at least one number')
+    .matches(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/)
+    .withMessage('New password must contain at least one special character')
 ];
 
 const forgotPasswordValidation = [
@@ -108,12 +135,18 @@ const resetPasswordValidation = [
   body('resetToken')
     .notEmpty()
     .withMessage('Reset token is required'),
-  
+
   body('newPassword')
-    .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters long')
+    .matches(/[A-Z]/)
+    .withMessage('Password must contain at least one uppercase letter')
+    .matches(/[a-z]/)
+    .withMessage('Password must contain at least one lowercase letter')
+    .matches(/\d/)
+    .withMessage('Password must contain at least one number')
+    .matches(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/)
+    .withMessage('Password must contain at least one special character')
 ];
 
 const verifyEmailValidation = [

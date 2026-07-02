@@ -35,14 +35,23 @@ const protect = async (req, res, next) => {
         });
       }
 
-      // Check if user is active
-      // Note: Verification check removed for development - can be re-enabled for production
-      // if (!user.isVerified) {
-      //   return res.status(401).json({
-      //     success: false,
-      //     message: 'Account not verified. Please verify your email.'
-      //   });
-      // }
+      // Prevent workers whose accounts are pending or rejected from using the API
+      if (user.role === 'WORKER') {
+        if (user.accountStatus === 'PENDING_APPROVAL') {
+          return res.status(403).json({
+            success: false,
+            message: "Votre compte est en cours de validation par nos administrateurs. Veuillez patienter jusqu'à l'approbation de votre compte.",
+            code: 'ACCOUNT_PENDING_APPROVAL'
+          });
+        }
+        if (user.accountStatus === 'REJECTED') {
+          return res.status(403).json({
+            success: false,
+            message: "Votre demande de compte a été refusée. Veuillez contacter notre support.",
+            code: 'ACCOUNT_REJECTED'
+          });
+        }
+      }
 
       req.user = user;
       next();

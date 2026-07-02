@@ -28,6 +28,16 @@ const register = async (req, res, next) => {
       phone
     });
 
+    // Worker accounts require manual admin approval — return 202 Accepted
+    if (result.pendingApproval) {
+      return res.status(202).json({
+        success: true,
+        pendingApproval: true,
+        message: 'Your account has been created successfully. It is currently pending administrator validation. You will be notified by email once your account has been approved.',
+        data: { user: result.user }
+      });
+    }
+
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
@@ -45,7 +55,6 @@ const login = async (req, res, next) => {
   try {
     // Check for validation errors
     const errors = validationResult(req);
-    console.log('Login validation errors:', errors.array());
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
@@ -54,9 +63,11 @@ const login = async (req, res, next) => {
       });
     }
 
-    const { email, password } = req.body;
+    // Accept email or phone as identifier
+    const { email, phone, password } = req.body;
+    const identifier = email || phone;
 
-    const result = await authService.login(email, password);
+    const result = await authService.login(identifier, password);
 
     res.status(200).json({
       success: true,
@@ -64,6 +75,21 @@ const login = async (req, res, next) => {
       data: result
     });
   } catch (error) {
+    // Return user-friendly messages for account status errors instead of exposing internals
+    if (error.message === 'ACCOUNT_PENDING_APPROVAL') {
+      return res.status(403).json({
+        success: false,
+        message: 'Votre compte est en cours de validation par nos administrateurs. Veuillez patienter jusqu\'à l\'approbation de votre compte.',
+        code: 'ACCOUNT_PENDING_APPROVAL'
+      });
+    }
+    if (error.message === 'ACCOUNT_REJECTED') {
+      return res.status(403).json({
+        success: false,
+        message: 'Votre demande de compte a été refusée. Veuillez contacter notre support pour plus d\'informations.',
+        code: 'ACCOUNT_REJECTED'
+      });
+    }
     next(error);
   }
 };
@@ -124,7 +150,7 @@ const updateProfile = async (req, res, next) => {
       }
     }
 
-    const result = await authService.updateProfile(req.user._id, req.body);
+    const result = await authService.updateProfile(req.user.id, req.body);
 
     res.status(200).json({
       success: true,
@@ -151,7 +177,7 @@ const updateWorkerProfile = async (req, res, next) => {
       });
     }
 
-    const result = await authService.updateWorkerProfile(req.user._id, req.body);
+    const result = await authService.updateWorkerProfile(req.user.id, req.body);
 
     res.status(200).json({
       success: true,
@@ -181,7 +207,7 @@ const changePassword = async (req, res, next) => {
     const { currentPassword, newPassword } = req.body;
 
     const result = await authService.changePassword(
-      req.user._id,
+      req.user.id,
       currentPassword,
       newPassword
     );

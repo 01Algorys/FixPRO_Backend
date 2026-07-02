@@ -25,6 +25,9 @@ const register = async (userData) => {
   // Hash password
   const hashedPassword = await bcrypt.hash(password, 10);
 
+  // Workers require manual admin approval before they can access the app
+  const accountStatus = role === 'WORKER' ? 'PENDING_APPROVAL' : 'APPROVED';
+
   // Create user
   const user = await prisma.user.create({
     data: {
@@ -32,7 +35,8 @@ const register = async (userData) => {
       email,
       password: hashedPassword,
       role,
-      phone
+      phone,
+      accountStatus
     }
   });
 
@@ -47,6 +51,10 @@ const register = async (userData) => {
         totalReviews: 0
       }
     });
+
+    // Workers cannot log in until approved — do not return a token
+    const { password: _, ...userWithoutPassword } = user;
+    return { pendingApproval: true, user: userWithoutPassword };
   }
 
   // Generate token
@@ -61,12 +69,23 @@ const register = async (userData) => {
   };
 };
 
-// Login User
-const login = async (email, password) => {
-  // Check for user
-  const user = await prisma.user.findUnique({
-    where: { email }
-  });
+// Login User — accepts email or phone number as identifier
+const login = async (identifier, password) => {
+  if (!identifier) {
+    throw new Error('Invalid credentials');
+  }
+
+  // Determine lookup strategy: email if contains '@', otherwise phone
+  let user;
+  if (identifier.includes('@')) {
+    user = await prisma.user.findUnique({ where: { email: identifier } });
+  } else {
+    // Try exact phone match first, then with +216 country prefix
+    user = await prisma.user.findFirst({ where: { phone: identifier } });
+    if (!user) {
+      user = await prisma.user.findFirst({ where: { phone: `+216${identifier}` } });
+    }
+  }
 
   if (!user) {
     throw new Error('Invalid credentials');
@@ -74,16 +93,17 @@ const login = async (email, password) => {
 
   // Check if password matches
   const isMatch = await bcrypt.compare(password, user.password);
-
   if (!isMatch) {
     throw new Error('Invalid credentials');
   }
 
-  // Update last login - skipped since field doesn't exist in schema
-  // await prisma.user.update({
-  //   where: { id: user.id },
-  //   data: { lastLogin: new Date() }
-  // });
+  // Enforce account status checks before issuing a token
+  if (user.accountStatus === 'PENDING_APPROVAL') {
+    throw new Error('ACCOUNT_PENDING_APPROVAL');
+  }
+  if (user.accountStatus === 'REJECTED') {
+    throw new Error('ACCOUNT_REJECTED');
+  }
 
   // Generate token
   const token = generateToken(user.id);
