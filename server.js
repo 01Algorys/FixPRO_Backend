@@ -19,6 +19,7 @@ const serviceRoutes = require('./routes/services');
 const reservationRoutes = require('./routes/reservations');
 const reviewRoutes = require('./routes/reviews');
 const messageRoutes = require('./routes/messages');
+const adminRoutes = require('./routes/admin');
 
 // Connect to database
 connectDB();
@@ -91,6 +92,7 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Worker profile by ID (public endpoint)
 const workerController = require('./controllers/workerController');
