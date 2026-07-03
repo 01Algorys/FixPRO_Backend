@@ -48,7 +48,17 @@ const updateProfileValidation = [
     .isNumeric()
     .withMessage('Service radius must be a number')
     .isFloat({ min: 1, max: 100 })
-    .withMessage('Service radius must be between 1 and 100 km')
+    .withMessage('Service radius must be between 1 and 100 km'),
+
+  body('latitude')
+    .optional()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('Latitude must be between -90 and 90'),
+
+  body('longitude')
+    .optional()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('Longitude must be between -180 and 180')
 ];
 
 const updateStatusValidation = [
@@ -99,7 +109,17 @@ const searchValidation = [
   query('limit')
     .optional()
     .isInt({ min: 1, max: 100 })
-    .withMessage('Limit must be between 1 and 100')
+    .withMessage('Limit must be between 1 and 100'),
+
+  query('lat')
+    .optional()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('Latitude must be between -90 and 90'),
+
+  query('lng')
+    .optional()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('Longitude must be between -180 and 180')
 ];
 
 // Public routes

@@ -1,5 +1,6 @@
 const { prisma } = require('../config/database');
 const { validationResult } = require('express-validator');
+const { haversineDistanceKm } = require('../utils/geo');
 
 // @desc    Get all workers
 // @route   GET /api/workers
@@ -14,10 +15,19 @@ const getWorkers = async (req, res, next) => {
       sortBy = 'averageRating',
       sortOrder = 'desc',
       minRating = 0,
-      isActive
+      isActive,
+      lat,
+      lng
     } = req.query;
 
     const skip = (page - 1) * limit;
+
+    // When the client sends their coordinates, we sort by distance instead
+    // of the default DB ordering, so pagination has to happen in memory
+    // after every matching worker's distance has been computed.
+    const userLat = lat !== undefined ? parseFloat(lat) : null;
+    const userLng = lng !== undefined ? parseFloat(lng) : null;
+    const sortByDistance = Number.isFinite(userLat) && Number.isFinite(userLng);
 
     // Build where clause
     const where = {};
@@ -69,8 +79,9 @@ const getWorkers = async (req, res, next) => {
         }
       },
       orderBy,
-      skip: skip,
-      take: parseInt(limit)
+      // Distance sorting/pagination happens after the query, so fetch
+      // every matching worker instead of just one page.
+      ...(sortByDistance ? {} : { skip, take: parseInt(limit) })
     });
 
     // DEBUG: Log raw workers data
@@ -90,10 +101,15 @@ const getWorkers = async (req, res, next) => {
           }
         });
       }
+      const distanceKm = sortByDistance && Number.isFinite(worker.latitude) && Number.isFinite(worker.longitude)
+        ? haversineDistanceKm(userLat, userLng, worker.latitude, worker.longitude)
+        : null;
+
       return {
         ...worker,
         id: worker.id, // Add worker's primary ID
-        services: serviceDetails
+        services: serviceDetails,
+        ...(sortByDistance ? { distanceKm: distanceKm !== null ? Math.round(distanceKm * 10) / 10 : null } : {})
       };
     }));
 
@@ -103,10 +119,24 @@ const getWorkers = async (req, res, next) => {
     const total = await prisma.worker.count({ where });
     console.log('DEBUG: Total workers count:', total);
 
+    let pagedWorkers = workersWithServices;
+
+    if (sortByDistance) {
+      // Workers without saved coordinates can't be placed on the distance
+      // scale, so they sort after everyone who has a known distance.
+      pagedWorkers = [...workersWithServices].sort((a, b) => {
+        if (a.distanceKm === null && b.distanceKm === null) return 0;
+        if (a.distanceKm === null) return 1;
+        if (b.distanceKm === null) return -1;
+        return a.distanceKm - b.distanceKm;
+      });
+      pagedWorkers = pagedWorkers.slice(skip, skip + parseInt(limit));
+    }
+
     const response = {
       success: true,
       data: {
-        workers: workersWithServices,
+        workers: pagedWorkers,
         pagination: {
           current: parseInt(page),
           pages: Math.ceil(total / limit),
@@ -286,7 +316,8 @@ const updateWorkerProfile = async (req, res, next) => {
 
     const allowedFields = [
       'bio', 'skills', 'services', 'experience', 'hourlyRate',
-      'availability', 'serviceArea', 'portfolio', 'certifications', 'businessInfo'
+      'availability', 'serviceArea', 'portfolio', 'certifications', 'businessInfo',
+      'latitude', 'longitude'
     ];
 
     const updateData = {};

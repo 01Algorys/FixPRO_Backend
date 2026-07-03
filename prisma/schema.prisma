@@ -43,6 +43,8 @@ model Worker {
   hourlyRate      Float?
   availability    Json?    // { monday: { available: true, startTime: "09:00", endTime: "17:00" }, ... }
   serviceArea     Json?    // { cities: ["New York", "Boston"], radius: 50 }
+  latitude        Float?
+  longitude       Float?
   portfolio       Json?    // Array of portfolio items
   certifications  Json?    // Array of certifications
   businessInfo    Json?    // { businessName, license, insurance }

@@ -192,9 +192,9 @@ const updateWorkerProfile = async (userId, updateData) => {
   }
 
   const allowedFields = [
-    'bio', 'skills', 'experience', 'hourlyRate', 
-    'availability', 'serviceArea', 'portfolio', 
-    'certifications', 'businessInfo'
+    'bio', 'skills', 'experience', 'hourlyRate',
+    'availability', 'serviceArea', 'portfolio',
+    'certifications', 'businessInfo', 'latitude', 'longitude'
   ];
 
   const filteredData = {};
