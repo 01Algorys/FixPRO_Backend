@@ -43,7 +43,17 @@ const registerValidation = [
   body('phone')
     .optional()
     .matches(/^[+]?[\d\s\-()]+$/)
-    .withMessage('Please provide a valid phone number')
+    .withMessage('Please provide a valid phone number'),
+
+  body('services')
+    .optional()
+    .isArray()
+    .withMessage('Services must be an array of service IDs'),
+
+  body('services.*')
+    .optional()
+    .isInt()
+    .withMessage('Each service ID must be an integer')
 ];
 
 const loginValidation = [

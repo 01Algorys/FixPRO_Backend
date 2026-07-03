@@ -90,7 +90,7 @@ const getUsers = async (req, res, next) => {
           role: true, accountStatus: true, isVerified: true, location: true, createdAt: true,
           worker: {
             select: {
-              id: true, isActive: true, isVerified: true,
+              id: true, isActive: true, isVerified: true, services: true,
               jobsCompleted: true, averageRating: true, totalReviews: true, hourlyRate: true,
             }
           }
@@ -130,7 +130,7 @@ const getUserById = async (req, res, next) => {
         createdAt: true, updatedAt: true,
         worker: {
           select: {
-            id: true, bio: true, skills: true, experience: true, hourlyRate: true,
+            id: true, bio: true, skills: true, services: true, experience: true, hourlyRate: true,
             serviceArea: true, isActive: true, isVerified: true,
             jobsCompleted: true, totalEarnings: true, averageRating: true, totalReviews: true,
           }
@@ -210,6 +210,42 @@ const updateUserStatus = async (req, res, next) => {
     });
 
     res.json({ success: true, data: updated });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// PATCH /api/admin/users/:id/services
+const updateWorkerServices = async (req, res, next) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (isNaN(userId)) return res.status(400).json({ success: false, message: 'Invalid user ID' });
+
+    const { services } = req.body;
+    if (!Array.isArray(services) || !services.every((id) => Number.isInteger(id))) {
+      return res.status(400).json({ success: false, message: 'services must be an array of integer service IDs' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, worker: { select: { id: true } } } });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.role !== 'WORKER' || !user.worker) {
+      return res.status(400).json({ success: false, message: 'This user does not have a technician profile' });
+    }
+
+    if (services.length > 0) {
+      const existingCount = await prisma.service.count({ where: { id: { in: services } } });
+      if (existingCount !== new Set(services).size) {
+        return res.status(400).json({ success: false, message: 'One or more service IDs do not exist' });
+      }
+    }
+
+    const updatedWorker = await prisma.worker.update({
+      where: { userId },
+      data: { services },
+      select: { id: true, userId: true, services: true }
+    });
+
+    res.json({ success: true, message: 'Technician services updated successfully', data: updatedWorker });
   } catch (error) {
     next(error);
   }
@@ -395,6 +431,7 @@ module.exports = {
   approveUser,
   rejectUser,
   updateUserStatus,
+  updateWorkerServices,
   getDashboardStats,
   getReservations,
   getReviews,

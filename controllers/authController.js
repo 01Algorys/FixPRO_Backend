@@ -18,14 +18,15 @@ const register = async (req, res, next) => {
       });
     }
 
-    const { name, email, password, role, phone } = req.body;
+    const { name, email, password, role, phone, services } = req.body;
 
     const result = await authService.register({
       name,
       email,
       password,
       role,
-      phone
+      phone,
+      services
     });
 
     // Worker accounts require manual admin approval — return 202 Accepted

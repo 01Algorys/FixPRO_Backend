@@ -51,23 +51,30 @@ const uploadLimiter = createRateLimit(
 
 // Input sanitization
 const sanitizeInput = (req, res, next) => {
+  // Remove potentially harmful characters from a string value
+  const cleanString = (value) => value
+    .replace(/\$/g, '')
+    .replace(/;/g, '')
+    .replace(/--/g, '')
+    .replace(/\//g, '')
+    .replace(/\\/g, '');
+
   // Generic input sanitization function
   const sanitize = (obj) => {
+    if (typeof obj === 'string') return cleanString(obj);
     if (!obj || typeof obj !== 'object') return obj;
-    
+
+    if (Array.isArray(obj)) {
+      return obj.map((item) => sanitize(item));
+    }
+
     const sanitized = {};
     for (const key in obj) {
       if (obj.hasOwnProperty(key)) {
         const value = obj[key];
-        
+
         if (typeof value === 'string') {
-          // Remove potentially harmful characters
-          sanitized[key] = value
-            .replace(/\$/g, '')
-            .replace(/;/g, '')
-            .replace(/--/g, '')
-            .replace(/\//g, '')
-            .replace(/\\/g, '');
+          sanitized[key] = cleanString(value);
         } else if (typeof value === 'object' && value !== null) {
           sanitized[key] = sanitize(value);
         } else {

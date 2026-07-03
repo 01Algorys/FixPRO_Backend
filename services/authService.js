@@ -12,7 +12,7 @@ const generateToken = (id) => {
 
 // Register User
 const register = async (userData) => {
-  const { name, email, password, role = 'USER', phone } = userData;
+  const { name, email, password, role = 'USER', phone, services } = userData;
 
   // Check if user exists
   const existingUser = await prisma.user.findUnique({
@@ -42,9 +42,14 @@ const register = async (userData) => {
 
   // Create worker profile if role is worker
   if (role === 'WORKER') {
+    const serviceIds = Array.isArray(services)
+      ? services.map((id) => parseInt(id, 10)).filter((id) => Number.isInteger(id))
+      : [];
+
     await prisma.worker.create({
       data: {
         userId: user.id,
+        services: serviceIds,
         jobsCompleted: 0,
         totalEarnings: 0,
         averageRating: 0,

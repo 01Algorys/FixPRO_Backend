@@ -17,6 +17,7 @@ router.get('/users/:id',   adminController.getUserById);
 router.patch('/users/:id/approve', adminController.approveUser);
 router.patch('/users/:id/reject',  adminController.rejectUser);
 router.patch('/users/:id/status',  adminController.updateUserStatus);
+router.patch('/users/:id/services', adminController.updateWorkerServices);
 
 // Reservations
 router.get('/reservations', adminController.getReservations);
