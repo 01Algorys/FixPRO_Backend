@@ -732,12 +732,24 @@ const getWorkerReviewsPublic = async (req, res, next) => {
       take: 10
     });
 
+    // Review has no Prisma relation to User, so attach reviewer info manually
+    const reviewerIds = [...new Set(reviews.map(r => r.userId))];
+    const reviewers = await prisma.user.findMany({
+      where: { id: { in: reviewerIds } },
+      select: { id: true, name: true, avatar: true }
+    });
+    const reviewerById = Object.fromEntries(reviewers.map(u => [u.id, u]));
+    const reviewsWithUser = reviews.map(review => ({
+      ...review,
+      user: reviewerById[review.userId] || null
+    }));
+
     const total = await prisma.review.count({ where: { workerId: parseInt(id), isVerified: true } });
 
     res.status(200).json({
       success: true,
       data: {
-        reviews,
+        reviews: reviewsWithUser,
         pagination: {
           current: 1,
           pages: Math.ceil(total / 10),

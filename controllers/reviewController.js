@@ -184,16 +184,48 @@ const createReview = async (req, res, next) => {
       });
     }
 
-    // Create review
-    const review = await prisma.review.create({
-      data: {
-        userId: req.user.id,
-        workerId: reservation.workerId,
-        reservationId: parseInt(reservationId),
-        rating: parseInt(rating),
-        comment: comment || '',
-        wouldHireAgain: wouldHireAgain || false
-      }
+    // reservation.workerId is the worker's User.id; Review/Worker stats are
+    // keyed by the Worker table's own id, so resolve that first.
+    const workerRecord = await prisma.worker.findUnique({
+      where: { userId: reservation.workerId }
+    });
+
+    if (!workerRecord) {
+      return res.status(404).json({
+        success: false,
+        message: 'Worker not found'
+      });
+    }
+
+    // Create review and refresh the worker's aggregate rating stats atomically
+    const [review] = await prisma.$transaction(async (tx) => {
+      const createdReview = await tx.review.create({
+        data: {
+          userId: req.user.id,
+          workerId: workerRecord.id,
+          reservationId: parseInt(reservationId),
+          rating: parseInt(rating),
+          comment: comment || '',
+          wouldHireAgain: wouldHireAgain || false,
+          isVerified: true
+        }
+      });
+
+      const aggregate = await tx.review.aggregate({
+        where: { workerId: workerRecord.id, isVerified: true },
+        _avg: { rating: true },
+        _count: { rating: true }
+      });
+
+      await tx.worker.update({
+        where: { id: workerRecord.id },
+        data: {
+          averageRating: aggregate._avg.rating || 0,
+          totalReviews: aggregate._count.rating || 0
+        }
+      });
+
+      return [createdReview];
     });
 
     res.status(201).json({

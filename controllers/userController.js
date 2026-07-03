@@ -30,8 +30,9 @@ const getUserReservations = async (req, res, next) => {
       let userReview = null;
 
       if (reservation.workerId) {
+        // reservation.workerId is the worker's User.id, not the Worker table's own id
         workerDetails = await prisma.worker.findUnique({
-          where: { id: reservation.workerId },
+          where: { userId: reservation.workerId },
           include: {
             user: {
               select: {
@@ -68,8 +69,18 @@ const getUserReservations = async (req, res, next) => {
       return {
         ...reservation,
         worker: workerDetails,
+        workerName: workerDetails?.user?.name || null,
+        workerAvatar: workerDetails?.user?.avatar || null,
+        workerPhone: workerDetails?.user?.phone || null,
+        workerRating: workerDetails?.averageRating || 0,
         service: serviceDetails,
-        userRating: userReview ? userReview.rating : null
+        userRating: userReview ? userReview.rating : null,
+        review: userReview ? {
+          rating: userReview.rating,
+          comment: userReview.comment,
+          wouldHireAgain: userReview.wouldHireAgain,
+          createdAt: userReview.createdAt
+        } : null
       };
     }));
 

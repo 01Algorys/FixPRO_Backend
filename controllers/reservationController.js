@@ -596,9 +596,9 @@ const getReservationsByWorkerId = async (req, res, next) => {
       take: parseInt(limit)
     });
 
-    // Fetch user and service data for each reservation
+    // Fetch user, service, and review data for each reservation
     const reservationsWithData = await Promise.all(reservations.map(async (reservation) => {
-      const [user, service] = await Promise.all([
+      const [user, service, review] = await Promise.all([
         prisma.user.findUnique({
           where: { id: reservation.userId },
           select: {
@@ -616,12 +616,24 @@ const getReservationsByWorkerId = async (req, res, next) => {
             category: true,
             basePrice: true
           }
+        }),
+        prisma.review.findFirst({
+          where: { reservationId: reservation.id }
         })
       ]);
       return {
         ...reservation,
         user,
-        service
+        service,
+        review: review ? {
+          rating: review.rating,
+          comment: review.comment,
+          wouldHireAgain: review.wouldHireAgain,
+          createdAt: review.createdAt
+        } : null,
+        // The worker's overall/final rating, shown alongside each job
+        workerRating: worker.averageRating || 0,
+        workerTotalReviews: worker.totalReviews || 0
       };
     }));
 
