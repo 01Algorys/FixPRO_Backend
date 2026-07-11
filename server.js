@@ -87,6 +87,56 @@ app.get('/socket-test', (req, res) => {
   });
 });
 
+// Public account deletion info page (required by Google Play Data Safety section)
+app.get('/account-deletion', (req, res) => {
+  res.status(200).send(`<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suppression de compte - FixPro</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
+  h1 { color: #1a56db; }
+  h2 { margin-top: 32px; }
+  ul { padding-left: 20px; }
+  .note { background: #f0f4ff; border-left: 4px solid #1a56db; padding: 12px 16px; margin: 20px 0; }
+</style>
+</head>
+<body>
+  <h1>Suppression de compte FixPro</h1>
+
+  <h2>Comment supprimer votre compte</h2>
+  <ol>
+    <li>Ouvrez l'application FixPro et connectez-vous</li>
+    <li>Allez dans <strong>Profil</strong></li>
+    <li>Appuyez sur <strong>Supprimer mon compte</strong></li>
+    <li>Saisissez votre mot de passe pour confirmer</li>
+  </ol>
+  <p class="note">La suppression est immédiate et ne peut pas être annulée. Un compte avec une réservation active (en attente, acceptée ou en cours) doit d'abord annuler ou terminer cette réservation avant de pouvoir être supprimé.</p>
+
+  <h2>Vous ne pouvez pas accéder à l'application ?</h2>
+  <p>Envoyez une demande de suppression à <a href="mailto:support@fixpro.com">support@fixpro.com</a> depuis l'adresse e-mail ou le numéro de téléphone associé à votre compte. Nous traiterons votre demande sous 30 jours.</p>
+
+  <h2>Données supprimées</h2>
+  <ul>
+    <li>Profil (nom, e-mail, téléphone, photo, localisation enregistrée)</li>
+    <li>Historique des réservations, avis et messages liés à votre compte</li>
+    <li>Jeton de notification push</li>
+  </ul>
+
+  <h2>Données conservées</h2>
+  <p>Aucune donnée personnelle n'est conservée après suppression, à l'exception des dossiers requis par la loi (ex : registres de facturation), le cas échéant, conservés uniquement le temps légalement requis.</p>
+
+  <hr style="margin-top:40px; border:none; border-top:1px solid #e5e5e5;">
+  <p style="font-size: 13px; color: #666;">
+    Account Deletion — FixPro. In-app: Profile → Delete Account. Without app access, email
+    <a href="mailto:support@fixpro.com">support@fixpro.com</a> from your account's registered email or phone number; requests are processed within 30 days.
+  </p>
+</body>
+</html>`);
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
