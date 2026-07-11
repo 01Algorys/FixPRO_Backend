@@ -3,8 +3,20 @@ const { body } = require('express-validator');
 const authController = require('../controllers/authController');
 const { protect, authorize, requireWorkerOrAdmin } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
+const { normalizePhone } = require('../utils/phone');
 
 const router = express.Router();
+
+// Shared phone validity rule — accepts international formats, validated via
+// libphonenumber-js (default region Tunisia) rather than a loose character regex.
+const validPhoneRule = body('phone')
+  .optional({ checkFalsy: true })
+  .custom((value) => {
+    if (!normalizePhone(value)) {
+      throw new Error('Please provide a valid phone number');
+    }
+    return true;
+  });
 
 // Shared password strength rule — used in both register and change-password
 const strongPasswordRule = body('password')
@@ -40,10 +52,7 @@ const registerValidation = [
     .isIn(['USER', 'WORKER'])
     .withMessage('Role must be either USER or WORKER'),
 
-  body('phone')
-    .optional()
-    .matches(/^[+]?[\d\s\-()]+$/)
-    .withMessage('Please provide a valid phone number'),
+  validPhoneRule,
 
   body('services')
     .optional()
@@ -86,11 +95,8 @@ const updateProfileValidation = [
     .isLength({ min: 2, max: 50 })
     .withMessage('Name must be between 2 and 50 characters'),
   
-  body('phone')
-    .optional()
-    .matches(/^[+]?[\d\s-()]+$/)
-    .withMessage('Please provide a valid phone number'),
-  
+  validPhoneRule,
+
   body('location.address')
     .optional()
     .trim()

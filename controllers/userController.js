@@ -1,6 +1,7 @@
 const { prisma } = require('../config/database');
 const { validationResult } = require('express-validator');
 const socketService = require('../services/socketService');
+const { normalizePhone } = require('../utils/phone');
 
 // @desc    Get user reservations
 // @route   GET /api/users/reservations
@@ -178,7 +179,8 @@ const getUserProfile = async (req, res, next) => {
     };
 
     reservations.forEach(stat => {
-      statusStats[stat.status] = stat._count.status;
+      const key = stat.status.toLowerCase();
+      statusStats[key] = stat._count.status;
       statusStats.total += stat._count.status;
     });
 
@@ -218,21 +220,43 @@ const updateUserProfile = async (req, res, next) => {
       }
     });
 
-    const user = await prisma.user.update({
-      where: { id: req.user.id },
-      data: updateData,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        role: true,
-        avatar: true,
-        location: true,
-        isVerified: true,
-        createdAt: true
+    if (updateData.phone) {
+      const normalizedPhone = normalizePhone(updateData.phone);
+      if (!normalizedPhone) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid phone number'
+        });
       }
-    });
+      updateData.phone = normalizedPhone;
+    }
+
+    let user;
+    try {
+      user = await prisma.user.update({
+        where: { id: req.user.id },
+        data: updateData,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          role: true,
+          avatar: true,
+          location: true,
+          isVerified: true,
+          createdAt: true
+        }
+      });
+    } catch (error) {
+      if (error.code === 'P2002' && error.meta?.target?.includes('phone')) {
+        return res.status(409).json({
+          success: false,
+          message: 'Ce numéro de téléphone est déjà utilisé'
+        });
+      }
+      throw error;
+    }
 
     if (!user) {
       return res.status(404).json({

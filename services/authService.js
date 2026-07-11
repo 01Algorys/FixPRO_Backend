@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { normalizePhone } = require('../utils/phone');
 const { prisma } = require('../config/database');
 
 // Generate JWT Token
@@ -9,6 +10,9 @@ const generateToken = (id) => {
     expiresIn: process.env.JWT_EXPIRE || '30d'
   });
 };
+
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
 // Register User
 const register = async (userData) => {
@@ -22,23 +26,38 @@ const register = async (userData) => {
     throw new Error('User with this email already exists');
   }
 
+  let normalizedPhone = null;
+  if (phone) {
+    normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      throw new Error('Invalid phone number');
+    }
+  }
+
   // Hash password
   const hashedPassword = await bcrypt.hash(password, 10);
 
   // Workers require manual admin approval before they can access the app
   const accountStatus = role === 'WORKER' ? 'PENDING_APPROVAL' : 'APPROVED';
 
-  // Create user
-  const user = await prisma.user.create({
-    data: {
-      name,
-      email,
-      password: hashedPassword,
-      role,
-      phone,
-      accountStatus
+  let user;
+  try {
+    user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        role,
+        phone: normalizedPhone,
+        accountStatus
+      }
+    });
+  } catch (error) {
+    if (error.code === 'P2002' && error.meta?.target?.includes('phone')) {
+      throw new Error('Ce numéro de téléphone est déjà utilisé');
     }
-  });
+    throw error;
+  }
 
   // Create worker profile if role is worker
   if (role === 'WORKER') {
@@ -85,20 +104,36 @@ const login = async (identifier, password) => {
   if (identifier.includes('@')) {
     user = await prisma.user.findUnique({ where: { email: identifier } });
   } else {
-    // Try exact phone match first, then with +216 country prefix
-    user = await prisma.user.findFirst({ where: { phone: identifier } });
-    if (!user) {
-      user = await prisma.user.findFirst({ where: { phone: `+216${identifier}` } });
-    }
+    const normalizedPhone = normalizePhone(identifier);
+    user = normalizedPhone
+      ? await prisma.user.findFirst({ where: { phone: normalizedPhone } })
+      : null;
   }
 
   if (!user) {
     throw new Error('Invalid credentials');
   }
 
+  // Brute-force lockout: reject before checking the password if still locked
+  if (user.lockUntil && user.lockUntil > new Date()) {
+    const minutesLeft = Math.ceil((user.lockUntil.getTime() - Date.now()) / 60000);
+    throw new Error(`ACCOUNT_LOCKED:${minutesLeft}`);
+  }
+
   // Check if password matches
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
+    const attempts = user.failedLoginAttempts + 1;
+    const shouldLock = attempts >= MAX_FAILED_LOGIN_ATTEMPTS;
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: shouldLock ? 0 : attempts,
+        lockUntil: shouldLock ? new Date(Date.now() + LOCKOUT_DURATION_MS) : null
+      }
+    });
+
     throw new Error('Invalid credentials');
   }
 
@@ -108,6 +143,14 @@ const login = async (identifier, password) => {
   }
   if (user.accountStatus === 'REJECTED') {
     throw new Error('ACCOUNT_REJECTED');
+  }
+
+  // Reset brute-force counters on a successful login
+  if (user.failedLoginAttempts > 0 || user.lockUntil) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockUntil: null }
+    });
   }
 
   // Generate token
@@ -171,10 +214,26 @@ const updateProfile = async (userId, updateData) => {
     }
   });
 
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: filteredData
-  });
+  if (filteredData.phone) {
+    const normalizedPhone = normalizePhone(filteredData.phone);
+    if (!normalizedPhone) {
+      throw new Error('Invalid phone number');
+    }
+    filteredData.phone = normalizedPhone;
+  }
+
+  let user;
+  try {
+    user = await prisma.user.update({
+      where: { id: userId },
+      data: filteredData
+    });
+  } catch (error) {
+    if (error.code === 'P2002' && error.meta?.target?.includes('phone')) {
+      throw new Error('Ce numéro de téléphone est déjà utilisé');
+    }
+    throw error;
+  }
 
   if (!user) {
     throw new Error('User not found');

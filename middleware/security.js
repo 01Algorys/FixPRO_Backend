@@ -30,10 +30,10 @@ const createRateLimit = (windowMs, max, message) => {
   });
 };
 
-// Different rate limits for different endpoints (increased for development)
+// Different rate limits for different endpoints
 const authLimiter = createRateLimit(
   15 * 60 * 1000, // 15 minutes
-  1000, // increased to 1000 attempts for development
+  20, // per-IP cap — defense-in-depth alongside per-account lockout in authService
   'Too many login attempts, please try again after 15 minutes'
 );
 

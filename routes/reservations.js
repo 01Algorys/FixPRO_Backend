@@ -46,6 +46,16 @@ const createReservationValidation = [
     .isObject()
     .withMessage('Location must be an object'),
 
+  body('location.latitude')
+    .optional({ nullable: true })
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('Latitude must be between -90 and 90'),
+
+  body('location.longitude')
+    .optional({ nullable: true })
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('Longitude must be between -180 and 180'),
+
   body('description')
     .trim()
     .notEmpty()
@@ -79,6 +89,14 @@ const updateStatusValidation = [
     .trim()
     .isLength({ max: 500 })
     .withMessage('Note cannot exceed 500 characters')
+];
+
+const cancelReservationValidation = [
+  body('reason')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Reason cannot exceed 500 characters')
 ];
 
 const addNoteValidation = [
@@ -121,7 +139,7 @@ router.get('/:id', reservationController.getReservation);
 router.get('/worker/:workerId', getReservationsValidation, reservationController.getReservationsByWorkerId);
 router.post('/', authorize('user'), createReservationValidation, reservationController.createReservation);
 router.put('/:id/status', updateStatusValidation, reservationController.updateReservationStatus);
-router.delete('/:id', reservationController.cancelReservation);
+router.delete('/:id', cancelReservationValidation, reservationController.cancelReservation);
 router.post('/:id/notes', addNoteValidation, reservationController.addNote);
 
 module.exports = router;

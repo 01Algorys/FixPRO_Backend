@@ -91,6 +91,14 @@ const login = async (req, res, next) => {
         code: 'ACCOUNT_REJECTED'
       });
     }
+    if (error.message.startsWith('ACCOUNT_LOCKED')) {
+      const minutesLeft = error.message.split(':')[1] || '15';
+      return res.status(423).json({
+        success: false,
+        message: `Trop de tentatives échouées. Réessayez dans ${minutesLeft} minute(s).`,
+        code: 'ACCOUNT_LOCKED'
+      });
+    }
     next(error);
   }
 };

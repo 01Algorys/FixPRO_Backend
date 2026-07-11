@@ -463,6 +463,15 @@ const updateReservationStatus = async (req, res, next) => {
 // @access  Private
 const cancelReservation = async (req, res, next) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
     const { id } = req.params;
     const { reason } = req.body;
 
@@ -477,11 +486,24 @@ const cancelReservation = async (req, res, next) => {
       });
     }
 
-    // Check permissions
-    if (req.user.id !== reservation.userId && req.user.id !== reservation.workerId && req.user.role !== 'admin') {
+    const isOwner = req.user.id === reservation.userId;
+    const isAdmin = req.user.role === 'admin';
+
+    // Only the client who booked it (or an admin) can cancel here — a worker
+    // declining a reservation should use PUT /:id/status with 'rejected'.
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
+      });
+    }
+
+    // A reservation can only be cancelled by the client before the worker
+    // has responded to it (business rule: cancel is pre-acceptance only).
+    if (reservation.status !== 'PENDING' && !isAdmin) {
+      return res.status(409).json({
+        success: false,
+        message: 'Cette réservation ne peut plus être annulée car elle a déjà été acceptée.'
       });
     }
 
@@ -491,7 +513,20 @@ const cancelReservation = async (req, res, next) => {
       data: {
         status: 'CANCELLED',
         cancelledBy: req.user.id,
-        cancellationReason: reason
+        cancellationReason: reason,
+        cancelledAt: new Date()
+      }
+    });
+
+    // Notify the worker in their notification center in case they're offline
+    await prisma.notification.create({
+      data: {
+        userId: reservation.workerId,
+        title: 'Réservation annulée',
+        message: 'Le client a annulé sa réservation.',
+        type: 'RESERVATION_CANCELLED',
+        data: JSON.stringify({ reservationId: reservation.id }),
+        isRead: false
       }
     });
 

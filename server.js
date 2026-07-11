@@ -4,12 +4,14 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const morgan = require('morgan');
+const cron = require('node-cron');
 
 // Import middleware and services
 const { connectDB } = require('./config/database');
 const { securityHeaders, generalLimiter, authLimiter, sanitizeInput, corsOptions, requestSizeLimiter } = require('./middleware/security');
 const errorHandler = require('./middleware/errorHandler');
 const socketService = require('./services/socketService');
+const { runExpirySweep } = require('./jobs/reservationExpiry');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -20,6 +22,7 @@ const reservationRoutes = require('./routes/reservations');
 const reviewRoutes = require('./routes/reviews');
 const messageRoutes = require('./routes/messages');
 const adminRoutes = require('./routes/admin');
+const searchRoutes = require('./routes/search');
 
 // Connect to database
 connectDB();
@@ -93,6 +96,7 @@ app.use('/api/reservations', reservationRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/search', searchRoutes);
 
 // Worker profile by ID (public endpoint)
 const workerController = require('./controllers/workerController');
@@ -114,6 +118,14 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
   console.log(`Socket.IO server initialized`);
+
+  // Auto-expire PENDING reservations older than 24h — checked every 15 minutes,
+  // which is well within an acceptable margin for a 24h SLA.
+  cron.schedule('*/15 * * * *', () => {
+    runExpirySweep().catch((error) => {
+      console.error('[reservationExpiry] Sweep failed:', error);
+    });
+  });
 });
 
 // Handle unhandled promise rejections

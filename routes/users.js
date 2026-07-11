@@ -2,6 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const userController = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
+const { normalizePhone } = require('../utils/phone');
 
 const router = express.Router();
 
@@ -17,10 +18,14 @@ const updateProfileValidation = [
     .withMessage('Name must be between 2 and 50 characters'),
   
   body('phone')
-    .optional()
-    .matches(/^[+]?[\d\s-()]+$/)
-    .withMessage('Please provide a valid phone number'),
-  
+    .optional({ checkFalsy: true })
+    .custom((value) => {
+      if (!normalizePhone(value)) {
+        throw new Error('Please provide a valid phone number');
+      }
+      return true;
+    }),
+
   body('location.address')
     .optional()
     .trim()

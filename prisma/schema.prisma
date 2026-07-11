@@ -16,13 +16,18 @@ model User {
   password      String
   name          String
   role          Role          @default(USER)
-  phone         String?
+  phone         String?       @unique
   location      Json?
   avatar        String?
   expoPushToken String?
   isVerified    Boolean       @default(false)
   emailVerified DateTime?
   accountStatus AccountStatus @default(APPROVED)
+
+  // Brute-force login protection
+  failedLoginAttempts Int      @default(0)
+  lockUntil           DateTime?
+
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -238,4 +243,5 @@ enum ReservationStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+  EXPIRED
 }
